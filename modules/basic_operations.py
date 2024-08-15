@@ -28,19 +28,6 @@ def resize_for_display(image, max_width=800, max_height=600):
     return image
 
 
-def display_image(image, label):
-    if len(image.shape) == 2:
-        q_image = QImage(image.data, image.shape[1], image.shape[0], image.strides[0], QImage.Format_Grayscale8)
-    else:
-        q_image = QImage(image.data, image.shape[1], image.shape[0], image.strides[0], QImage.Format_RGB888).rgbSwapped()
-    # height, width, channel = image.shape
-    # bytes_per_line = 3 * width
-
-    pixmap = QPixmap.fromImage(q_image)
-    label.setPixmap(pixmap)
-    label.setScaledContents(True)
-
-
 # Resize image based on user input
 def resize_image(image, width=None, height=None):
     dim = None
