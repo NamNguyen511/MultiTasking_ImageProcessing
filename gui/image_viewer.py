@@ -1,6 +1,7 @@
 from PyQt5.QtWidgets import QWidget, QHBoxLayout, QLabel
 from PyQt5.QtGui import QImage, QPixmap
 
+
 class ImageViewer(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
