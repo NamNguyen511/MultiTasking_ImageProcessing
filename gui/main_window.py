@@ -1,12 +1,13 @@
 import sys
 from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QWidget, QPushButton, QFileDialog, \
-    QLineEdit, QHBoxLayout, QGroupBox, QFrame
+    QLineEdit, QHBoxLayout, QGroupBox, QFrame, QSizePolicy
 from PyQt5.QtGui import QPalette, QColor
 from gui.button_panel import ButtonPanel
 from gui.image_viewer import ImageViewer
 from modules.animation import animation_widget
 from modules.basic_operations import load_image, resize_image, rotate_image
 from modules.filtering import blur_images, canny_detect_edges
+from resources.styles import combined_styles
 
 
 class Color(QWidget):
@@ -24,14 +25,16 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("Image Multitask Processing.")
-        self.setGeometry(100, 100, 1200, 600)
+        self.setGeometry(100, 100, 1200, 800)
         self.original_image = None # Store the original image
         self.current_image = None  # Store the current image
 
         # Main Layout
         self.main_layout = QHBoxLayout()
 
+        # Button Panel
         self.button_panel = ButtonPanel(self)
+        self.button_panel.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Expanding)
         self.main_layout.addWidget(self.button_panel)
 
         # Add line seperator
@@ -42,6 +45,7 @@ class MainWindow(QMainWindow):
 
         # Image Viewer
         self.image_viewer = ImageViewer(self)
+        self.image_viewer.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Expanding)
         self.main_layout.addWidget(self.image_viewer)
 
         # Central widget and layout
@@ -49,11 +53,7 @@ class MainWindow(QMainWindow):
         central_widget.setLayout(self.main_layout)
         self.setCentralWidget(central_widget)
 
-        # Animation button panel
-        self.show()
-        start_y_offset = self.height() + 50
-        animation_widget(self.button_panel, start_y=start_y_offset, end_y=self.button_panel.y(), duration=3000)
-
+        self.setStyleSheet(combined_styles)
 
     def load_image(self):
         file_name, _ = QFileDialog.getOpenFileName(self, "Open Image File", "", "Images (*.png *.jpg *.bmp)")
