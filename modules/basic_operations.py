@@ -71,7 +71,7 @@ def rotate_image(image, angle):
     matrix[1, 2] += (new_height / 2) - center[1]
 
     # Perform the actual rotation and return the image
-    rotated_image = cv2.warpAffine(image, matrix, (new_width, new_height), borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0))
+    rotated_image = cv2.warpAffine(image, matrix, (new_width, new_height), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0))
 
     # Find the bounding box of the non-black areas
     gray = cv2.cvtColor(rotated_image, cv2.COLOR_BGR2GRAY)

@@ -10,6 +10,8 @@ class ImageViewer(QWidget):
         # Labels to display images
         self.original_image_label = QLabel(self)
         self.modified_image_label = QLabel(self)
+        self.original_image_label.setFixedSize(600, 600)
+        self.modified_image_label.setFixedSize(600, 600)
 
         # Add Labels to the image layout
         layout.addWidget(self.original_image_label)

@@ -100,5 +100,35 @@ label_style = """
     }
 """
 
+# QComboBox Styles
+combobox_style = """
+    QComboBox {
+        border: 2px solid #4CAF50;
+        border-radius: 5px;
+        padding: 5px;
+        font-size: 14px;
+        min-width: 150px;  /* Consistent dropdown width */
+    }
+    QComboBox::drop-down {
+        border-left: 2px solid #4CAF50;
+        width: 30px;
+        background: #4CAF50;
+    }
+    QComboBox::down-arrow {
+        image: url(path_to_arrow_icon.png);  /* Add your own arrow icon */
+        width: 20px;
+        height: 20px;
+    }
+    QComboBox::down-arrow:hover {
+        image: url(path_to_arrow_icon_hover.png);  /* Hover state for arrow icon */
+    }
+    QComboBox QAbstractItemView {
+        border: 2px solid #4CAF50;
+        background-color: white;
+        selection-background-color: #4CAF50;
+        selection-color: white;
+    }
+"""
 # Combine all styles into one stylesheet
-combined_styles = general_style + button_style + input_style + groupbox_style + tabWidget_style + toolbox_style + label_style
+combined_styles = (general_style + button_style + input_style + groupbox_style + tabWidget_style + toolbox_style +
+                   label_style + combobox_style)
