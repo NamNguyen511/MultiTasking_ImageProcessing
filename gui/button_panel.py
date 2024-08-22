@@ -1,5 +1,6 @@
+import cv2
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLineEdit, QSlider, QGroupBox, QSizePolicy, QTabWidget, \
-    QToolBox, QLabel
+    QToolBox, QLabel, QComboBox
 from PyQt5.QtCore import Qt
 from modules.animation import animation_group_widgets
 from resources import styles
@@ -90,6 +91,35 @@ class ButtonPanel(QWidget):
         canny_group.setLayout(canny_layout)
         operations_toolbox.addItem(canny_group, "Canny Edge Detection")
 
+        # Morphological Operations
+        morph_group = QWidget()
+        morph_layout = QVBoxLayout()
+        self.filter_shape_combo = QComboBox(self)
+        self.filter_shape_combo.addItem("Rectangle", cv2.MORPH_RECT)
+        self.filter_shape_combo.addItem("Ellipse", cv2.MORPH_ELLIPSE)
+        self.filter_shape_combo.addItem("Cross", cv2.MORPH_CROSS)
+        self.filter_shape_combo.setToolTip("Select the shape of the morphological filter")
+
+        self.filter_type_combo = QComboBox(self)
+        self.filter_type_combo.addItem("Dilation", cv2.MORPH_DILATE)
+        self.filter_type_combo.addItem("Erosion", cv2.MORPH_ERODE)
+        self.filter_type_combo.addItem("Open", cv2.MORPH_OPEN)
+        self.filter_type_combo.addItem("Closing", cv2.MORPH_CLOSE)
+        self.filter_type_combo.addItem("Gradient", cv2.MORPH_GRADIENT)
+        self.filter_type_combo.setToolTip("Select the type of morphological operation")
+
+        apply_filter_button = QPushButton("Apply Filter", self)
+        apply_filter_button.setToolTip("Apply the selected filter to the image")
+        apply_filter_button.clicked.connect(self.parent().morphological_filters)
+
+        morph_layout.addWidget(QLabel("Kernel Shape"))
+        morph_layout.addWidget(self.filter_shape_combo)
+        morph_layout.addWidget(QLabel("Filter Type"))
+        morph_layout.addWidget(self.filter_type_combo)
+        morph_layout.addWidget(apply_filter_button)
+        morph_group.setLayout(morph_layout)
+        operations_toolbox.addItem(morph_group, "Morphological Operation")
+
         image_operations_layout.addWidget(operations_toolbox)
         image_operations_tab.setLayout(image_operations_layout)
         self.tab_widget.addTab(image_operations_tab, "Image Operations")
@@ -129,7 +159,7 @@ class ButtonPanel(QWidget):
         self.blue_slider.setMinimum(-100)
         self.blue_slider.setMaximum(100)
         self.blue_slider.setValue(0)
-        self.blue_slider_label = QLabel("Red")
+        self.blue_slider_label = QLabel("Blue")
         color_adjustments_layout.addWidget(self.blue_slider)
         color_adjustments_layout.addWidget(self.blue_slider_label)
 
@@ -137,7 +167,7 @@ class ButtonPanel(QWidget):
         self.green_slider.setMinimum(-100)
         self.green_slider.setMaximum(100)
         self.green_slider.setValue(0)
-        self.green_slider_label = QLabel("Red")
+        self.green_slider_label = QLabel("Green")
         color_adjustments_layout.addWidget(self.green_slider)
         color_adjustments_layout.addWidget(self.green_slider_label)
 
@@ -150,6 +180,8 @@ class ButtonPanel(QWidget):
         # Set size policies to allow resizing
         resize_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
         rotate_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        color_adjustments_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        image_operations_tab.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
 
         self.setLayout(button_layout)
 
