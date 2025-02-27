@@ -71,16 +71,29 @@ def rotate_image(image, angle):
     matrix[1, 2] += (new_height / 2) - center[1]
 
     # Perform the actual rotation and return the image
-    rotated_image = cv2.warpAffine(image, matrix, (new_width, new_height), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0))
+    rotated_image = cv2.warpAffine(image, matrix, (new_width, new_height),
+                                   flags=cv2.INTER_LINEAR,
+                                   borderMode=cv2.BORDER_CONSTANT,
+                                   borderValue=(0, 0, 0))
 
     # Find the bounding box of the non-black areas
     gray = cv2.cvtColor(rotated_image, cv2.COLOR_BGR2GRAY)
     _, thresh = cv2.threshold(gray, 1, 255, cv2.THRESH_BINARY)
+
+    if np.count_nonzero(thresh) == 0:
+        return rotated_image
+
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     if contours:
         x, y, w, h = cv2.boundingRect(contours[0])
-        cropped_image = rotated_image[y:y+h, x:x+w]
-        return cropped_image
-    else:
-        return rotated_image
+        H, W = rotated_image.shape[:2]
+        # Clamp the bounding box to be within the image dimensions
+        x = max(0, min(x, W))
+        y = max(0, min(y, H))
+        w = max(0, min(w, W - x))
+        h = max(0, min(h, H - y))
+        if w > 0 and h > 0:
+            cropped_image = rotated_image[y:y+h, x:x+w]
+            return cropped_image
+    return rotated_image

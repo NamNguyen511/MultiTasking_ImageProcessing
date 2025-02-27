@@ -20,3 +20,14 @@ def morphological_filters(image, kernel_shape, operation):
     kernel = cv2.getStructuringElement(kernel_shape, kernel_size)
     filtered_image = cv2.morphologyEx(image, operation, kernel)
     return filtered_image
+
+
+def sobel_edge_detection(image, operation):
+
+    # Smooth an image with Gaussian Blur
+    image = cv2.GaussianBlur(image, (3, 3), 0)
+
+    # Convert color image to gray
+    gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+
