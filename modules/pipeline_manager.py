@@ -1,20 +1,39 @@
+import logging
 from abc import ABC, abstractmethod
 import cv2
 import numpy as np
 
+# Configure logging
+logging.basicConfig(level=logging.INFO,
+                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 # Import existing processing functions from modules
-from modules.basic_operations import resize_image, rotate_image
+from modules.basic_operations import resize_image, rotate_image, crop_image, flip_image
 from modules.color_processing import hue_saturation_adjustment, color_balance_adjustment
 from modules.filtering import blur_images, canny_detect_edges, morphological_filters
 
+class OperationError(Exception):
+    """Custom exception for operation-related errors"""
+    pass
 
 # Abstract base class for all operations
 class Operation(ABC):
     @abstractmethod
     def apply(self, image):
-        """Apply the operation on the given image
-        and return the result"""
+        """Apply the operation on the given image and return the result"""
         pass
+
+    def validate_image(self, image):
+        """Validate input image"""
+        if image is None:
+            raise OperationError("Input image is None")
+        if not isinstance(image, np.ndarray):
+            raise OperationError("Input must be a numpy array")
+        if len(image.shape) not in [2, 3]:
+            raise OperationError("Image must be 2D or 3D array")
+        if image.dtype != np.uint8:
+            raise OperationError("Image must be uint8 type")
 
 class ResizeOperation(Operation):
     def __init__(self, width=None, height=None):
@@ -56,24 +75,37 @@ class BlurOperation(Operation):
         return blur_images(image, kernel_size=self.kernel_size)
 
 class MorphOperations(Operation):
-    def __int__(self, kernel_shape, operation):
+    def __init__(self, kernel_shape, operation):
         self.kernel_shape = kernel_shape
         self.operation = operation
 
     def apply(self, image):
+        # Convert to grayscale if input is color
+        if len(image.shape) == 3:
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         return morphological_filters(image, kernel_shape=self.kernel_shape, operation=self.operation)
 
 class SobelEdgeDetectionOperation(Operation):
-    def __int__(self, mode="Vertical"):
+    def __init__(self, mode="Vertical"):
         self.mode = mode
 
     def apply(self, image):
-        image = cv2.GaussianBlur(image, (3, 3), 0)
-        gray  = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        if self.mode.lower() == 'vertical':
-            sobel = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=5)
+        # Convert to grayscale if input is color
+        if len(image.shape) == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         else:
-            sobel = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=5)
+            gray = image.copy()
+            
+        # Apply Gaussian blur to reduce noise
+        blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+        
+        # Apply Sobel operator
+        if self.mode.lower() == 'vertical':
+            sobel = cv2.Sobel(blurred, cv2.CV_64F, 1, 0, ksize=3)
+        else:
+            sobel = cv2.Sobel(blurred, cv2.CV_64F, 0, 1, ksize=3)
+            
+        # Convert back to uint8
         abs_sobel = cv2.convertScaleAbs(sobel)
         return abs_sobel
 
@@ -104,38 +136,80 @@ class SharpenOperation(Operation):
 
 class CropOperation(Operation):
     def __init__(self, x, y, width, height):
-        """
-        Crop the image to the rectangle starting at (x, y) with given width and height.
-        """
         self.x = x
         self.y = y
         self.width = width
         self.height = height
 
     def apply(self, image):
-        # Ensure crop coordinates are within image bounds
-        h, w = image.shape[:2]
-        x1 = max(0, self.x)
-        y1 = max(0, self.y)
-        x2 = min(w, self.x + self.width)
-        y2 = min(h, self.y + self.height)
-        return image[y1:y2, x1:x2]
+        return crop_image(image, self.x, self.y, self.width, self.height)
+
+class FlipOperation(Operation):
+    def __init__(self, flip_code):
+        self.flip_code = flip_code
+
+    def apply(self, image):
+        return flip_image(image, self.flip_code)
 
 # Pipeline Manager
 class PipelineManager:
-    def __init__(self, original_image):
-        self.original_image = original_image # Keep the untouched image
+    def __init__(self):
         self.operations = []
         self.undo_stack = []
         self.redo_stack = []
-        self.current_image = original_image.copy()
+        self.current_image = None
+        self.original_image = None
+        self.max_undo_steps = 20  # Limit undo stack size
+        logger.info("PipelineManager initialized")
+
+    def set_image(self, image):
+        """Set the current image and store it as the original"""
+        try:
+            if image is None:
+                raise ValueError("Cannot set None as image")
+            
+            # Validate image
+            if not isinstance(image, np.ndarray):
+                raise ValueError("Image must be a numpy array")
+            if len(image.shape) not in [2, 3]:
+                raise ValueError("Image must be 2D or 3D array")
+            if image.dtype != np.uint8:
+                raise ValueError("Image must be uint8 type")
+
+            self.current_image = image.copy()
+            self.original_image = image.copy()
+            self.operations = []
+            self.undo_stack = []
+            self.redo_stack = []
+            logger.info(f"Image set successfully. Shape: {image.shape}")
+        except Exception as e:
+            logger.error(f"Error setting image: {str(e)}")
+            raise
 
     def add_operation(self, operation):
-        """Append operation and reprocess the image"""
-        self.operations.append(operation)
-        self.undo_stack.append(('add', operation))
-        self.redo_stack.clear()
-        self.reprocess()
+        """Add an operation to the pipeline and apply it"""
+        try:
+            if self.current_image is None:
+                raise OperationError("No image loaded")
+            
+            # Validate operation
+            if not isinstance(operation, Operation):
+                raise OperationError("Invalid operation type")
+            
+            # Store current state for undo
+            self.undo_stack.append((self.current_image.copy(), self.operations.copy()))
+            if len(self.undo_stack) > self.max_undo_steps:
+                self.undo_stack.pop(0)  # Remove oldest state
+            
+            self.redo_stack = []  # Clear redo stack when new operation is added
+            
+            # Apply operation
+            self.current_image = operation.apply(self.current_image)
+            self.operations.append(operation)
+            logger.info(f"Operation {operation.__class__.__name__} added successfully")
+        except Exception as e:
+            logger.error(f"Error adding operation: {str(e)}")
+            raise
 
     def remove_operation(self, index):
         """Remove an operation by index and reprocess"""
@@ -164,60 +238,57 @@ class PipelineManager:
         self.current_image = self.original_image.copy()
 
     def undo(self):
-        """Undo the last action in the pipeline"""
-        if not self.undo_stack:
-            return # Nothing to undo
-
-        action = self.undo_stack.pop()
-        action_type = action[0]
-
-        if action_type == 'add':
-            op = action[1]
-            if self.operations and self.operations[-1] == op:
-                self.operations.pop()
-                self.redo_stack.append(('add', op))
-        elif action_type == 'remove':
-            index, op = action[1], action[2]
-            self.operations.insert(index, op)
-            self.redo_stack.append(('remove', index, op))
-        elif action_type == 'update':
-            index, old_op = action[1], action[2]
-            new_op = self.operations[index]
-            self.operations[index] = old_op
-            self.redo_stack.append(('update', index, new_op))
-        elif action_type == 'clear':
-            previous_ops = action[1]
-            self.operations = previous_ops
-            self.redo_stack.append(('clear', None))
-        self.reprocess()
+        """Undo the last operation"""
+        try:
+            if not self.undo_stack:
+                logger.warning("Nothing to undo")
+                return False
+            
+            # Store current state for redo
+            self.redo_stack.append((self.current_image.copy(), self.operations.copy()))
+            
+            # Restore previous state
+            self.current_image, self.operations = self.undo_stack.pop()
+            logger.info("Operation undone successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Error during undo: {str(e)}")
+            return False
 
     def redo(self):
-        """Redo the last undone action."""
-        if not self.redo_stack:
-            return  # Nothing to redo
+        """Redo the last undone operation"""
+        try:
+            if not self.redo_stack:
+                logger.warning("Nothing to redo")
+                return False
+            
+            # Store current state for undo
+            self.undo_stack.append((self.current_image.copy(), self.operations.copy()))
+            
+            # Restore next state
+            self.current_image, self.operations = self.redo_stack.pop()
+            logger.info("Operation redone successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Error during redo: {str(e)}")
+            return False
 
-        action = self.redo_stack.pop()
-        action_type = action[0]
+    def reset(self):
+        """Reset the pipeline to its original state"""
+        try:
+            if self.original_image is not None:
+                self.current_image = self.original_image.copy()
+                self.operations = []
+                self.undo_stack = []
+                self.redo_stack = []
+                logger.info("Pipeline reset to original state")
+                return True
+            logger.warning("No original image to reset to")
+            return False
+        except Exception as e:
+            logger.error(f"Error during reset: {str(e)}")
+            return False
 
-        if action_type == 'add':
-            op = action[1]
-            self.operations.append(op)
-            self.undo_stack.append(('add', op))
-        elif action_type == 'remove':
-            index, op = action[1], action[2]
-            if 0 <= index < len(self.operations):
-                self.operations.pop(index)
-            self.undo_stack.append(('remove', index, op))
-        elif action_type == 'update':
-            index, new_op = action[1], action[2]
-            old_op = self.operations[index]
-            self.operations[index] = new_op
-            self.undo_stack.append(('update', index, old_op))
-        elif action_type == 'clear':
-            previous_ops = self.operations.copy()
-            self.operations.clear()
-            self.undo_stack.append(('clear', previous_ops))
-        self.reprocess()
     def reprocess(self):
         """Reaply all operations sequantially on the original image"""
         image = self.original_image.copy()
@@ -225,3 +296,16 @@ class PipelineManager:
             image = op.apply(image)
         self.current_image = image
         return self.current_image
+
+    def get_operation_history(self):
+        """Get the list of operations in the pipeline"""
+        return [op.__class__.__name__ for op in self.operations]
+
+    def get_current_state(self):
+        """Get the current state of the pipeline"""
+        return {
+            'current_image': self.current_image,
+            'operations': self.get_operation_history(),
+            'can_undo': len(self.undo_stack) > 0,
+            'can_redo': len(self.redo_stack) > 0
+        }

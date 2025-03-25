@@ -1,6 +1,7 @@
 from PyQt5.QtWidgets import QWidget, QMainWindow, QVBoxLayout
 import matplotlib.pyplot as plt
 import cv2
+import numpy as np
 
 
 class HistogramWindow(QMainWindow):
@@ -18,13 +19,23 @@ class HistogramWindow(QMainWindow):
         self.display_histogram(image)
 
     def display_histogram(self, image):
-        color = ('b', 'r', 'g')
         plt.figure('Histogram')
-        plt.title("Color Histogram")
-        plt.xlabel("Bins")
+        
+        if len(image.shape) == 3:  # Color image
+            plt.title("Color Image Histogram")
+            color = ('b', 'g', 'r')
+            labels = ['Blue', 'Green', 'Red']
+            for i, (col, label) in enumerate(zip(color, labels)):
+                hist = cv2.calcHist([image], [i], None, [256], [0, 256])
+                plt.plot(hist, color=col, label=label)
+        else:  # Grayscale image
+            plt.title("Grayscale Image Histogram")
+            hist = cv2.calcHist([image], [0], None, [256], [0, 256])
+            plt.plot(hist, color='gray', label='Intensity')
+
+        plt.xlabel("Pixel Intensity")
         plt.ylabel("Number of Pixels")
-        for i, col in enumerate(color):
-            hist = cv2.calcHist([image], [i], None, [256], [0, 256])
-            plt.plot(hist, color=col)
-            plt.xlim([0, 256])
+        plt.xlim([0, 256])
+        plt.grid(True, alpha=0.3)
+        plt.legend()
         plt.show()
