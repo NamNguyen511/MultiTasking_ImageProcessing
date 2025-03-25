@@ -106,14 +106,11 @@ class MainWindow(QMainWindow):
     # 1. MENUS & TOOLBAR
     # ------------------------------------------------
     def show_operation_history(self):
-        """Update Operation history list"""
-        self.operation_list.clear()
-        operations = self.pipeline_manager.get_operation_history()
-        for i, op in enumerate(operations):
-            item = QListWidgetItem(f"{i+1}. {op}")
-            # Store operation index
-            item.setData(Qt.UserRole, i)
-            self.operation_list.addItem(item)
+        """Show the operation history panel"""
+        if not self.pipeline_manager or not self.pipeline_manager.operations:
+            QMessageBox.information(self, "Operation History", "No operations performed yet.")
+            return
+        self.update_operation_history()
 
     def on_operation_selected(self, item):
         """Handle operation selection from history"""
@@ -453,6 +450,7 @@ class MainWindow(QMainWindow):
 
             self.current_image = self.pipeline_manager.current_image
             self.image_viewer.display_image(self.current_image, label_type='modified')
+            self.update_operation_history()
             self.update_status_bar()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to resize image: {str(e)}")
@@ -472,6 +470,7 @@ class MainWindow(QMainWindow):
 
             self.current_image = self.pipeline_manager.current_image
             self.image_viewer.display_image(self.current_image, label_type='modified')
+            self.update_operation_history()
             self.update_status_bar()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to rotate image: {str(e)}")
@@ -488,6 +487,7 @@ class MainWindow(QMainWindow):
                 blurred_image = blur_images(self.current_image, kernel)
                 self.current_image = blurred_image
                 self.image_viewer.display_image(self.current_image, label_type='modified')
+                self.update_operation_history()
                 self.update_status_bar()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to blur image: {str(e)}")
@@ -520,6 +520,7 @@ class MainWindow(QMainWindow):
             # Update the displayed image
             self.current_image = self.pipeline_manager.current_image
             self.image_viewer.display_image(self.current_image, label_type='modified')
+            self.update_operation_history()
             self.update_status_bar()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to adjust color: {str(e)}")
@@ -538,6 +539,7 @@ class MainWindow(QMainWindow):
 
             self.current_image = self.pipeline_manager.current_image
             self.image_viewer.display_image(self.current_image, label_type='modified')
+            self.update_operation_history()
             self.update_status_bar()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to adjust color balance: {str(e)}")
@@ -576,13 +578,13 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Failed to apply Sobel edge detection: {str(e)}")
 
     def update_operation_history(self):
-        """Update the operation history list"""
+        """Update the operation history list widget with current operations"""
         self.operation_list.clear()
         if self.pipeline_manager:
             operations = self.pipeline_manager.get_operation_history()
             for i, op in enumerate(operations):
                 item = QListWidgetItem(f"{i+1}. {op}")
-                item.setData(Qt.UserRole, i)  # Store operation index
+                item.setData(Qt.UserRole, i)
                 self.operation_list.addItem(item)
                 
     
