@@ -48,7 +48,45 @@ class RotateOperation(Operation):
         self.angle = angle
 
     def apply(self, image):
-        return rotate_image(image, self.angle)
+        try:
+            # Validate input
+            self.validate_image(image)
+            
+            # Ensure angle is within valid range
+            self.angle = self.angle % 360
+            
+            # Get image dimensions
+            height, width = image.shape[:2]
+            
+            # Get rotation matrix
+            center = (width // 2, height // 2)
+            rotation_matrix = cv2.getRotationMatrix2D(center, self.angle, 1.0)
+            
+            # Calculate new dimensions
+            cos = np.abs(rotation_matrix[0, 0])
+            sin = np.abs(rotation_matrix[0, 1])
+            new_width = int((height * sin) + (width * cos))
+            new_height = int((height * cos) + (width * sin))
+            
+            # Adjust rotation matrix
+            rotation_matrix[0, 2] += (new_width / 2) - center[0]
+            rotation_matrix[1, 2] += (new_height / 2) - center[1]
+            
+            # Perform rotation
+            rotated = cv2.warpAffine(
+                image,
+                rotation_matrix,
+                (new_width, new_height),
+                flags=cv2.INTER_LINEAR,
+                borderMode=cv2.BORDER_CONSTANT,
+                borderValue=(255, 255, 255) if len(image.shape) == 3 else 255
+            )
+            
+            return rotated
+            
+        except Exception as e:
+            logger.error(f"Error in rotation operation: {str(e)}")
+            raise OperationError(f"Failed to rotate image: {str(e)}")
 
 class HueSaturationOperation(Operation):
     def __init__(self, hue, saturation):
@@ -159,7 +197,8 @@ class PipelineManager:
         self.redo_stack = []
         self.current_image = None
         self.original_image = None
-        self.max_undo_steps = 20  # Limit undo stack size
+        self.max_undo_steps = 20
+        self.presets = {}  # Store operation presets
         logger.info("PipelineManager initialized")
 
     def set_image(self, image):
@@ -309,3 +348,84 @@ class PipelineManager:
             'can_undo': len(self.undo_stack) > 0,
             'can_redo': len(self.redo_stack) > 0
         }
+
+    def save_preset(self, name, operations):
+        """Save a set of operations as a preset"""
+        try:
+            preset_data = []
+            for op in operations:
+                preset_data.append({
+                    'type': op.__class__.__name__,
+                    'params': op.__dict__
+                })
+            self.presets[name] = preset_data
+            logger.info(f"Saved preset: {name}")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving preset: {str(e)}")
+            return False
+
+    def load_preset(self, name):
+        """Load a preset by name"""
+        try:
+            if name not in self.presets:
+                raise ValueError(f"Preset {name} not found")
+            
+            preset_data = self.presets[name]
+            operations = []
+            
+            for op_data in preset_data:
+                op_type = op_data['type']
+                params = op_data['params']
+                
+                # Create operation instance based on type
+                if op_type == 'ResizeOperation':
+                    op = ResizeOperation(params.get('width'), params.get('height'))
+                elif op_type == 'RotateOperation':
+                    op = RotateOperation(params.get('angle'))
+                elif op_type == 'HueSaturationOperation':
+                    op = HueSaturationOperation(params.get('hue'), params.get('saturation'))
+                elif op_type == 'ColorBalanceAdjustment':
+                    op = ColorBalanceAdjustment(
+                        params.get('red_balance'),
+                        params.get('blue_balance'),
+                        params.get('green_balance')
+                    )
+                elif op_type == 'BlurOperation':
+                    op = BlurOperation(params.get('kernel_size'))
+                elif op_type == 'MorphOperations':
+                    op = MorphOperations(params.get('kernel_shape'), params.get('operation'))
+                elif op_type == 'SobelEdgeDetectionOperation':
+                    op = SobelEdgeDetectionOperation(params.get('mode'))
+                elif op_type == 'GammaCorrectionOperation':
+                    op = GammaCorrectionOperation(params.get('gamma'))
+                else:
+                    logger.warning(f"Unknown operation type: {op_type}")
+                    continue
+                    
+                operations.append(op)
+            
+            # Apply the preset operations
+            self.operations = operations
+            self.reprocess()
+            logger.info(f"Loaded preset: {name}")
+            return True
+        except Exception as e:
+            logger.error(f"Error loading preset: {str(e)}")
+            return False
+
+    def get_presets(self):
+        """Get list of available presets"""
+        return list(self.presets.keys())
+
+    def delete_preset(self, name):
+        """Delete a preset"""
+        try:
+            if name in self.presets:
+                del self.presets[name]
+                logger.info(f"Deleted preset: {name}")
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Error deleting preset: {str(e)}")
+            return False

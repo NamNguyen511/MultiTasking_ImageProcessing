@@ -6,7 +6,8 @@ import numpy as np
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
     QFileDialog, QLineEdit, QGroupBox, QFrame, QSizePolicy, QMenuBar, QAction,
-    QMessageBox, QToolBar, QStatusBar, QLabel, QScrollArea, QListWidget, QListWidgetItem
+    QMessageBox, QToolBar, QStatusBar, QLabel, QScrollArea, QListWidget, QListWidgetItem,
+    QProgressBar
 )
 from PyQt5.QtGui import QPalette, QColor, QIcon, QKeySequence
 from PyQt5.QtCore import Qt
@@ -98,6 +99,11 @@ class MainWindow(QMainWindow):
 
         # Initialize the operation history display
         self.update_operation_history()
+
+        # Create progress bar
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        self.status_bar.addPermanentWidget(self.progress_bar)
 
     def run(self):
         self.show()
@@ -215,6 +221,10 @@ class MainWindow(QMainWindow):
         toggle_panel_action.triggered.connect(self.toggle_side_panel)
         view_menu.addAction(toggle_panel_action)
 
+        comparison_action = QAction(QIcon("icons/compare.png"), "Compare Before/After", self, checkable=True)
+        comparison_action.triggered.connect(self.toggle_comparison_mode)
+        view_menu.addAction(comparison_action)
+
         original_action = QAction("Show Original", self, checkable=True)
         original_action.triggered.connect(self.toggle_original)
         view_menu.addAction(original_action)
@@ -241,6 +251,8 @@ class MainWindow(QMainWindow):
         self.tool_bar.addAction(redo_action)
         self.tool_bar.addSeparator()
         self.tool_bar.addAction(show_history_action)
+        self.tool_bar.addSeparator()
+        self.tool_bar.addAction(comparison_action)
     
 
     # -----------------------------------------------
@@ -309,8 +321,8 @@ class MainWindow(QMainWindow):
 
                 # Display the original image
                 self.image_viewer.display_image(self.original_image, label_type="original")
-                self.image_viewer.modified_image_label.clear()
-                self.update_status_bar()
+                self.image_viewer.display_image(self.current_image, label_type="modified")
+                self.update_status_bar("Image loaded successfully")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to load image: {str(e)}")
 
@@ -419,6 +431,17 @@ class MainWindow(QMainWindow):
         histogram_window.show()
         self.update_status_bar("Displaying histogram")
 
+    def toggle_comparison_mode(self, checked):
+        """Toggle the comparison mode in the image viewer"""
+        if not self.check_image_loaded():
+            return
+        
+        self.image_viewer.toggle_comparison_mode(checked)
+        if checked:
+            self.update_status_bar("Comparison mode enabled - Use slider to compare images")
+        else:
+            self.update_status_bar("Comparison mode disabled")
+
     # -----------------------------------------------
     #  6. UTILITY
     # -----------------------------------------------
@@ -446,34 +469,58 @@ class MainWindow(QMainWindow):
 
             # Remove any existing resize operations
             self.pipeline_manager.operations = [op for op in self.pipeline_manager.operations if not isinstance(op, ResizeOperation)]
-            self.pipeline_manager.add_operation(ResizeOperation(width, height))
-
-            self.current_image = self.pipeline_manager.current_image
-            self.image_viewer.display_image(self.current_image, label_type='modified')
-            self.update_operation_history()
-            self.update_status_bar()
+            operation = ResizeOperation(width, height)
+            self.apply_operation_with_progress(operation)
+            
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to resize image: {str(e)}")
 
     def rotate_image(self):
+        """Rotate the image by the specified angle"""
         if not self.check_image_loaded():
             return
 
         try:
+            # Get angle from input
             angle_str = self.dock_panel.angle_input.text()
             angle = int(angle_str) if angle_str else 90
-
-            self.total_angle = (self.total_angle + angle) % 360
-
-            self.pipeline_manager.operations = [op for op in self.pipeline_manager.operations if not isinstance(op, RotateOperation)]
-            self.pipeline_manager.add_operation(RotateOperation(self.total_angle))
-
-            self.current_image = self.pipeline_manager.current_image
-            self.image_viewer.display_image(self.current_image, label_type='modified')
-            self.update_operation_history()
-            self.update_status_bar()
+            
+            # Create and apply rotation operation with progress tracking
+            operation = RotateOperation(angle)
+            self.apply_operation_with_progress(operation)
+            
+        except ValueError as e:
+            QMessageBox.warning(self, "Warning", "Please enter a valid angle (integer value).")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to rotate image: {str(e)}")
+            
+    def apply_operation_with_progress(self, operation, steps=100):
+        """Apply operation with progress tracking"""
+        try:
+            self.show_progress(True, 0)
+            QApplication.processEvents()  # Update UI
+            
+            # Remove existing operations of the same type
+            self.pipeline_manager.operations = [op for op in self.pipeline_manager.operations 
+                                             if not isinstance(op, operation.__class__)]
+            
+            # Apply operation
+            self.pipeline_manager.add_operation(operation)
+            
+            # Update progress
+            for i in range(steps):
+                self.update_progress(i + 1)
+                QApplication.processEvents()
+                
+            self.current_image = self.pipeline_manager.current_image
+            self.image_viewer.display_image(self.current_image, label_type="modified")
+            self.update_operation_history()
+            self.update_status_bar()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Operation failed: {str(e)}")
+        finally:
+            self.show_progress(False)
 
     def blur_image(self):
         if not self.check_image_loaded():
@@ -587,4 +634,14 @@ class MainWindow(QMainWindow):
                 item.setData(Qt.UserRole, i)
                 self.operation_list.addItem(item)
                 
+    def show_progress(self, show=True, value=0):
+        """Show or hide progress bar"""
+        self.progress_bar.setVisible(show)
+        if show:
+            self.progress_bar.setValue(value)
+            
+    def update_progress(self, value):
+        """Update progress bar value"""
+        self.progress_bar.setValue(value)
+        
     
