@@ -2,7 +2,7 @@ import cv2
 from PyQt5.QtWidgets import (
     QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
     QGroupBox, QToolBox, QLabel, QComboBox, QPushButton, QLineEdit,
-    QTabWidget, QColorDialog, QSizePolicy
+    QTabWidget, QColorDialog, QSizePolicy, QCheckBox
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor
@@ -29,6 +29,7 @@ class DockablePanel(QDockWidget):
         self.tab_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.tab_widget.addTab(self.create_basic_operations_tab(), "Basic Operations")
         self.tab_widget.addTab(self.create_image_operations_tab(), "Filters / Advanced")
+        self.tab_widget.addTab(self.create_segmentation_tab(), "Segmentation")
         container_layout.addWidget(self.tab_widget)
 
         # Color Adjustment
@@ -405,3 +406,215 @@ class DockablePanel(QDockWidget):
             for i in range(3):
                 for j in range(3):
                     self.kernel_inputs[i][j].setText(str(kernel[i][j]))
+
+    def create_segmentation_tab(self):
+        """Create UI for segmentation operations"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(5, 5, 5, 5)
+
+        toolbox = QToolBox()
+        toolbox.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        
+        # Add segmentation tools
+        toolbox.addItem(self.create_watershed_group(), "Watershed Segmentation")
+        toolbox.addItem(self.create_kmeans_group(), "K-Means Clustering")
+        toolbox.addItem(self.create_grabcut_group(), "GrabCut Foreground Extraction")
+        toolbox.addItem(self.create_interactive_segmentation_group(), "Interactive Segmentation")
+
+        layout.addWidget(toolbox)
+        return widget
+        
+    def create_watershed_group(self):
+        """Create UI for watershed segmentation controls"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        # Connectivity parameter
+        layout.addWidget(QLabel("Connectivity:"))
+        self.watershed_connectivity_combo = QComboBox()
+        self.watershed_connectivity_combo.addItem("4-Connectivity", 4)
+        self.watershed_connectivity_combo.addItem("8-Connectivity", 8)
+        self.watershed_connectivity_combo.setCurrentIndex(1)  # Default to 8
+        layout.addWidget(self.watershed_connectivity_combo)
+        
+        # Description
+        desc_label = QLabel(
+            "Watershed segmentation is used to separate touching objects in an image.\n"
+            "It treats grayscale images as a topographic surface and finds boundaries\n"
+            "between segments."
+        )
+        desc_label.setWordWrap(True)
+        desc_label.setStyleSheet("color: #666; font-style: italic;")
+        layout.addWidget(desc_label)
+        
+        # Apply button
+        apply_button = QPushButton("Apply Watershed Segmentation", self)
+        apply_button.clicked.connect(self.parent().apply_watershed_segmentation)
+        layout.addWidget(apply_button)
+        
+        layout.addStretch(1)
+        return widget
+        
+    def create_kmeans_group(self):
+        """Create UI for k-means clustering controls"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        # Number of clusters (k)
+        layout.addWidget(QLabel("Number of Clusters (k):"))
+        self.kmeans_k_input = QLineEdit()
+        self.kmeans_k_input.setPlaceholderText("Number of clusters (default: 3)")
+        layout.addWidget(self.kmeans_k_input)
+        
+        # Number of attempts
+        layout.addWidget(QLabel("Number of Attempts:"))
+        self.kmeans_attempts_input = QLineEdit()
+        self.kmeans_attempts_input.setPlaceholderText("Clustering attempts (default: 10)")
+        layout.addWidget(self.kmeans_attempts_input)
+        
+        # Use labeled view or segmented view
+        self.kmeans_use_labels_checkbox = QCheckBox("Use color-coded labels for visualization")
+        self.kmeans_use_labels_checkbox.setChecked(True)
+        layout.addWidget(self.kmeans_use_labels_checkbox)
+        
+        # Description
+        desc_label = QLabel(
+            "K-means clustering groups image pixels into k distinct clusters based on\n"
+            "color values. This is useful for color-based segmentation of an image."
+        )
+        desc_label.setWordWrap(True)
+        desc_label.setStyleSheet("color: #666; font-style: italic;")
+        layout.addWidget(desc_label)
+        
+        # Apply button
+        apply_button = QPushButton("Apply K-Means Segmentation", self)
+        apply_button.clicked.connect(self.parent().apply_kmeans_segmentation)
+        layout.addWidget(apply_button)
+        
+        layout.addStretch(1)
+        return widget
+        
+    def create_grabcut_group(self):
+        """Create UI for GrabCut segmentation controls"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        # Rect selection group
+        rect_group = QGroupBox("Foreground Rectangle")
+        rect_layout = QVBoxLayout()
+        
+        # Auto checkbox
+        self.grabcut_auto_checkbox = QCheckBox("Auto-detect foreground (center of image)")
+        self.grabcut_auto_checkbox.setChecked(True)
+        self.grabcut_auto_checkbox.clicked.connect(self.toggle_grabcut_rect)
+        rect_layout.addWidget(self.grabcut_auto_checkbox)
+        
+        # Rectangle coordinates
+        rect_input_layout = QHBoxLayout()
+        rect_input_layout.addWidget(QLabel("X:"))
+        self.grabcut_x_input = QLineEdit()
+        self.grabcut_x_input.setEnabled(False)
+        rect_input_layout.addWidget(self.grabcut_x_input)
+        
+        rect_input_layout.addWidget(QLabel("Y:"))
+        self.grabcut_y_input = QLineEdit()
+        self.grabcut_y_input.setEnabled(False)
+        rect_input_layout.addWidget(self.grabcut_y_input)
+        
+        rect_input_layout.addWidget(QLabel("W:"))
+        self.grabcut_width_input = QLineEdit()
+        self.grabcut_width_input.setEnabled(False)
+        rect_input_layout.addWidget(self.grabcut_width_input)
+        
+        rect_input_layout.addWidget(QLabel("H:"))
+        self.grabcut_height_input = QLineEdit()
+        self.grabcut_height_input.setEnabled(False)
+        rect_input_layout.addWidget(self.grabcut_height_input)
+        
+        rect_layout.addLayout(rect_input_layout)
+        rect_group.setLayout(rect_layout)
+        layout.addWidget(rect_group)
+        
+        # Iterations
+        layout.addWidget(QLabel("Iterations:"))
+        self.grabcut_iterations_input = QLineEdit()
+        self.grabcut_iterations_input.setPlaceholderText("Number of iterations (default: 5)")
+        layout.addWidget(self.grabcut_iterations_input)
+        
+        # Output type
+        self.grabcut_extract_foreground_checkbox = QCheckBox("Extract foreground (vs. binary mask)")
+        self.grabcut_extract_foreground_checkbox.setChecked(True)
+        layout.addWidget(self.grabcut_extract_foreground_checkbox)
+        
+        # Description
+        desc_label = QLabel(
+            "GrabCut algorithm extracts foreground from background using a combination\n"
+            "of graph cuts and Gaussian Mixture Models. It's particularly useful for\n"
+            "object extraction."
+        )
+        desc_label.setWordWrap(True)
+        desc_label.setStyleSheet("color: #666; font-style: italic;")
+        layout.addWidget(desc_label)
+        
+        # Apply button
+        apply_button = QPushButton("Apply GrabCut Segmentation", self)
+        apply_button.clicked.connect(self.parent().apply_grabcut_segmentation)
+        layout.addWidget(apply_button)
+        
+        layout.addStretch(1)
+        return widget
+        
+    def create_interactive_segmentation_group(self):
+        """Create UI for interactive segmentation controls"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        # Seed points section
+        seeds_group = QGroupBox("Seed Points")
+        seeds_layout = QVBoxLayout()
+        
+        # Auto checkbox
+        self.interactive_auto_checkbox = QCheckBox("Auto-place seed (center of image)")
+        self.interactive_auto_checkbox.setChecked(True)
+        seeds_layout.addWidget(self.interactive_auto_checkbox)
+        
+        # Seeds coordinates
+        seeds_layout.addWidget(QLabel("Seed Coordinates (y,x pairs, comma-separated):"))
+        self.interactive_seeds_input = QLineEdit()
+        self.interactive_seeds_input.setPlaceholderText("e.g., 100,150,250,300 for points at (100,150) and (250,300)")
+        seeds_layout.addWidget(self.interactive_seeds_input)
+        
+        seeds_group.setLayout(seeds_layout)
+        layout.addWidget(seeds_group)
+        
+        # Threshold
+        layout.addWidget(QLabel("Threshold (0.0-1.0):"))
+        self.interactive_threshold_input = QLineEdit()
+        self.interactive_threshold_input.setPlaceholderText("Threshold for region growing (default: 0.1)")
+        layout.addWidget(self.interactive_threshold_input)
+        
+        # Description
+        desc_label = QLabel(
+            "Interactive segmentation uses region growing from seed points to segment\n"
+            "regions with similar pixel intensities. It's useful for segmenting\n"
+            "specific regions in an image."
+        )
+        desc_label.setWordWrap(True)
+        desc_label.setStyleSheet("color: #666; font-style: italic;")
+        layout.addWidget(desc_label)
+        
+        # Apply button
+        apply_button = QPushButton("Apply Interactive Segmentation", self)
+        apply_button.clicked.connect(self.parent().apply_interactive_segmentation)
+        layout.addWidget(apply_button)
+        
+        layout.addStretch(1)
+        return widget
+        
+    def toggle_grabcut_rect(self, auto_checked):
+        """Enable/disable rect inputs based on auto checkbox"""
+        self.grabcut_x_input.setEnabled(not auto_checked)
+        self.grabcut_y_input.setEnabled(not auto_checked)
+        self.grabcut_width_input.setEnabled(not auto_checked)
+        self.grabcut_height_input.setEnabled(not auto_checked)

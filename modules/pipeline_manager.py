@@ -14,6 +14,8 @@ from modules.color_processing import hue_saturation_adjustment, color_balance_ad
 from modules.filtering import (blur_images, canny_detect_edges, morphological_filters, 
                               bilateral_filter, median_filter, nlm_denoise, 
                               custom_kernel_filter)
+from modules.segmentation import (watershed_segmentation, kmeans_segmentation, 
+                                 grabcut_segmentation, interactive_segmentation)
 
 class OperationError(Exception):
     """Custom exception for operation-related errors"""
@@ -273,6 +275,94 @@ class CustomKernelOperation(Operation):
             kernel_str = str(self.kernel).replace('\n', '')
         return f"Custom Kernel Filter ({kernel_str})"
 
+# Image Segmentation Operations for Phase 2
+class WatershedSegmentationOperation(Operation):
+    """Watershed algorithm for image segmentation"""
+    def __init__(self, connectivity=8):
+        self.connectivity = connectivity
+        
+    def apply(self, image):
+        try:
+            self.validate_image(image)
+            segmented, image_with_boundaries, _ = watershed_segmentation(image, connectivity=self.connectivity)
+            # Return the image with boundaries for display
+            return image_with_boundaries
+        except Exception as e:
+            logger.error(f"Error in watershed segmentation: {str(e)}")
+            raise OperationError(f"Failed to apply watershed segmentation: {str(e)}")
+            
+    def __str__(self):
+        return f"Watershed Segmentation (connectivity={self.connectivity})"
+
+class KMeansSegmentationOperation(Operation):
+    """K-means clustering for color-based segmentation"""
+    def __init__(self, k=3, attempts=10, use_labels=False):
+        self.k = k
+        self.attempts = attempts
+        self.use_labels = use_labels  # Whether to use colored labels or segmented image
+        
+    def apply(self, image):
+        try:
+            self.validate_image(image)
+            segmented, label_image, _ = kmeans_segmentation(image, k=self.k, attempts=self.attempts)
+            # Return either the segmented image or the colored labels
+            return label_image if self.use_labels else segmented
+        except Exception as e:
+            logger.error(f"Error in k-means segmentation: {str(e)}")
+            raise OperationError(f"Failed to apply k-means segmentation: {str(e)}")
+            
+    def __str__(self):
+        return f"K-Means Segmentation (k={self.k}, attempts={self.attempts})"
+
+class GrabCutSegmentationOperation(Operation):
+    """GrabCut algorithm for foreground extraction"""
+    def __init__(self, rect=None, iter_count=5, extract_foreground=True):
+        self.rect = rect  # Tuple (x, y, width, height) or None for auto
+        self.iter_count = iter_count
+        self.extract_foreground = extract_foreground  # Whether to return mask or foreground
+        
+    def apply(self, image):
+        try:
+            self.validate_image(image)
+            # Ensure the image is color (required for GrabCut)
+            if len(image.shape) != 3:
+                image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+                
+            display_mask, foreground, _ = grabcut_segmentation(
+                image, rect=self.rect, iterCount=self.iter_count
+            )
+            
+            # Return either the foreground extraction or the binary mask
+            return foreground if self.extract_foreground else display_mask
+        except Exception as e:
+            logger.error(f"Error in GrabCut segmentation: {str(e)}")
+            raise OperationError(f"Failed to apply GrabCut segmentation: {str(e)}")
+            
+    def __str__(self):
+        rect_str = str(self.rect) if self.rect else "auto"
+        return f"GrabCut Foreground Extraction (rect={rect_str}, iterations={self.iter_count})"
+
+class InteractiveSegmentationOperation(Operation):
+    """Interactive segmentation using region growing"""
+    def __init__(self, seeds=None, threshold=0.1):
+        self.seeds = seeds
+        self.threshold = threshold
+        
+    def apply(self, image):
+        try:
+            self.validate_image(image)
+            segmented, image_with_boundaries, _ = interactive_segmentation(
+                image, seeds=self.seeds, threshold=self.threshold
+            )
+            return image_with_boundaries
+        except Exception as e:
+            logger.error(f"Error in interactive segmentation: {str(e)}")
+            raise OperationError(f"Failed to apply interactive segmentation: {str(e)}")
+            
+    def __str__(self):
+        seed_count = len(self.seeds) if self.seeds else 0
+        return f"Interactive Segmentation (seeds={seed_count}, threshold={self.threshold})"
+
 # Pipeline Manager
 class PipelineManager:
     def __init__(self):
@@ -491,6 +581,14 @@ class PipelineManager:
                     op = NLMDenoiseOperation(params.get('h'), params.get('template_window_size'), params.get('search_window_size'))
                 elif op_type == 'CustomKernelOperation':
                     op = CustomKernelOperation(params.get('kernel'))
+                elif op_type == 'WatershedSegmentationOperation':
+                    op = WatershedSegmentationOperation(params.get('connectivity'))
+                elif op_type == 'KMeansSegmentationOperation':
+                    op = KMeansSegmentationOperation(params.get('k'), params.get('attempts'), params.get('use_labels'))
+                elif op_type == 'GrabCutSegmentationOperation':
+                    op = GrabCutSegmentationOperation(params.get('rect'), params.get('iter_count'), params.get('extract_foreground'))
+                elif op_type == 'InteractiveSegmentationOperation':
+                    op = InteractiveSegmentationOperation(params.get('seeds'), params.get('threshold'))
                 else:
                     logger.warning(f"Unknown operation type: {op_type}")
                     continue

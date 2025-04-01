@@ -26,7 +26,9 @@ from modules.pipeline_manager import  (
     ColorBalanceAdjustment, ResizeOperation,
     RotateOperation, MorphOperations,
     SobelEdgeDetectionOperation, BilateralFilterOperation,
-    MedianFilterOperation, NLMDenoiseOperation, CustomKernelOperation
+    MedianFilterOperation, NLMDenoiseOperation, CustomKernelOperation,
+    WatershedSegmentationOperation, KMeansSegmentationOperation,
+    GrabCutSegmentationOperation, InteractiveSegmentationOperation
 )
 from modules.basic_operations import load_image, resize_image, rotate_image, save_image
 from modules.filtering import blur_images, canny_detect_edges, morphological_filters
@@ -819,5 +821,148 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to apply custom kernel: {str(e)}")
+        
+    # -----------------------------------
+    # 9. SEGMENTATION METHODS
+    # -----------------------------------
+    def apply_watershed_segmentation(self):
+        """Apply watershed segmentation algorithm"""
+        if not self.check_image_loaded():
+            return
+            
+        try:
+            # Get connectivity from UI
+            connectivity = self.dock_panel.watershed_connectivity_combo.currentData()
+            
+            # Create operation
+            operation = WatershedSegmentationOperation(connectivity=connectivity)
+            self.apply_operation_with_progress(operation)
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to apply watershed segmentation: {str(e)}")
+    
+    def apply_kmeans_segmentation(self):
+        """Apply K-means clustering segmentation"""
+        if not self.check_image_loaded():
+            return
+            
+        try:
+            # Get parameters from UI
+            k_str = self.dock_panel.kmeans_k_input.text()
+            attempts_str = self.dock_panel.kmeans_attempts_input.text()
+            use_labels = self.dock_panel.kmeans_use_labels_checkbox.isChecked()
+            
+            # Parse parameters or use defaults
+            k = int(k_str) if k_str else 3
+            attempts = int(attempts_str) if attempts_str else 10
+            
+            # Sanity check
+            if k < 2:
+                k = 2
+                QMessageBox.warning(self, "Warning", "K must be at least 2. Using K=2.")
+            
+            # Create operation
+            operation = KMeansSegmentationOperation(k=k, attempts=attempts, use_labels=use_labels)
+            self.apply_operation_with_progress(operation)
+            
+        except ValueError as e:
+            QMessageBox.warning(self, "Warning", "Please enter valid values for K-means parameters.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to apply K-means segmentation: {str(e)}")
+    
+    def apply_grabcut_segmentation(self):
+        """Apply GrabCut algorithm for foreground extraction"""
+        if not self.check_image_loaded():
+            return
+            
+        try:
+            # Check if image is color (GrabCut requires color)
+            if len(self.current_image.shape) != 3:
+                QMessageBox.warning(self, "Warning", "GrabCut requires a color image. Please load a color image.")
+                return
+                
+            # Get parameters from UI
+            auto_rect = self.dock_panel.grabcut_auto_checkbox.isChecked()
+            iter_count_str = self.dock_panel.grabcut_iterations_input.text()
+            extract_foreground = self.dock_panel.grabcut_extract_foreground_checkbox.isChecked()
+            
+            # Parse parameters
+            iter_count = int(iter_count_str) if iter_count_str else 5
+            
+            # Get rect coordinates
+            if auto_rect:
+                rect = None  # Use auto-detection
+            else:
+                # Parse rect coordinates
+                try:
+                    x = int(self.dock_panel.grabcut_x_input.text())
+                    y = int(self.dock_panel.grabcut_y_input.text())
+                    width = int(self.dock_panel.grabcut_width_input.text())
+                    height = int(self.dock_panel.grabcut_height_input.text())
+                    rect = (x, y, width, height)
+                except (ValueError, TypeError):
+                    QMessageBox.warning(self, "Warning", "Invalid rectangle coordinates. Using auto-detection.")
+                    rect = None
+            
+            # Create operation
+            operation = GrabCutSegmentationOperation(
+                rect=rect, 
+                iter_count=iter_count, 
+                extract_foreground=extract_foreground
+            )
+            self.apply_operation_with_progress(operation)
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to apply GrabCut segmentation: {str(e)}")
+    
+    def apply_interactive_segmentation(self):
+        """Apply interactive segmentation with region growing"""
+        if not self.check_image_loaded():
+            return
+            
+        try:
+            # Get parameters from UI
+            auto_seed = self.dock_panel.interactive_auto_checkbox.isChecked()
+            threshold_str = self.dock_panel.interactive_threshold_input.text()
+            
+            # Parse threshold
+            threshold = float(threshold_str) if threshold_str else 0.1
+            if threshold < 0 or threshold > 1:
+                QMessageBox.warning(self, "Warning", "Threshold must be between 0 and 1. Using 0.1.")
+                threshold = 0.1
+            
+            # Get seed points
+            if auto_seed:
+                # Place seed at center of image
+                height, width = self.current_image.shape[:2]
+                seeds = [(height // 2, width // 2)]
+            else:
+                # Parse seeds from input
+                seeds_str = self.dock_panel.interactive_seeds_input.text()
+                if not seeds_str:
+                    QMessageBox.warning(self, "Warning", "No seed points provided. Using center of image.")
+                    height, width = self.current_image.shape[:2]
+                    seeds = [(height // 2, width // 2)]
+                else:
+                    try:
+                        # Parse comma-separated values: y1,x1,y2,x2,...
+                        coords = [int(c) for c in seeds_str.split(',')]
+                        if len(coords) % 2 != 0:
+                            raise ValueError("Odd number of coordinates")
+                            
+                        seeds = []
+                        for i in range(0, len(coords), 2):
+                            seeds.append((coords[i], coords[i+1]))
+                    except Exception:
+                        QMessageBox.warning(self, "Warning", "Invalid seed coordinates. Using center of image.")
+                        height, width = self.current_image.shape[:2]
+                        seeds = [(height // 2, width // 2)]
+            
+            # Create operation
+            operation = InteractiveSegmentationOperation(seeds=seeds, threshold=threshold)
+            self.apply_operation_with_progress(operation)
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to apply interactive segmentation: {str(e)}")
         
     
