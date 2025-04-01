@@ -91,6 +91,12 @@ class DockablePanel(QDockWidget):
         toolbox.addItem(self.create_canny_group(), "Canny Edge Detection")
         toolbox.addItem(self.create_sobel_group(), "Sobel Edge Detection")
         toolbox.addItem(self.create_morph_group(), "Morphological Operation")
+        
+        # Add advanced filters (Phase 2)
+        toolbox.addItem(self.create_bilateral_filter_group(), "Bilateral Filter")
+        toolbox.addItem(self.create_median_filter_group(), "Median Filter")
+        toolbox.addItem(self.create_nlm_denoise_group(), "NLM Denoising")
+        toolbox.addItem(self.create_custom_kernel_group(), "Custom Kernel")
 
         layout.addWidget(toolbox)
 
@@ -203,3 +209,199 @@ class DockablePanel(QDockWidget):
 
             # Call a method in the main window to apply a hue/sat operation
             self.parent().apply_color_from_palette(hue, saturation)
+            
+    # ----------------------------------
+    # ADVANCED FILTERS
+    # ----------------------------------
+    def create_bilateral_filter_group(self):
+        """Create UI for bilateral filter controls"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        # Diameter parameter
+        layout.addWidget(QLabel("Diameter of Pixel Neighborhood:"))
+        self.bilateral_d_input = QLineEdit(self)
+        self.bilateral_d_input.setPlaceholderText("Diameter (default: 9)")
+        layout.addWidget(self.bilateral_d_input)
+        
+        # Sigma Color parameter
+        layout.addWidget(QLabel("Filter Sigma in Color Space:"))
+        self.bilateral_sigma_color_input = QLineEdit(self)
+        self.bilateral_sigma_color_input.setPlaceholderText("Sigma Color (default: 75)")
+        layout.addWidget(self.bilateral_sigma_color_input)
+        
+        # Sigma Space parameter
+        layout.addWidget(QLabel("Filter Sigma in Coordinate Space:"))
+        self.bilateral_sigma_space_input = QLineEdit(self)
+        self.bilateral_sigma_space_input.setPlaceholderText("Sigma Space (default: 75)")
+        layout.addWidget(self.bilateral_sigma_space_input)
+        
+        # Apply button
+        apply_button = QPushButton("Apply Bilateral Filter", self)
+        apply_button.clicked.connect(self.parent().apply_bilateral_filter)
+        layout.addWidget(apply_button)
+        
+        layout.addStretch(1)
+        return widget
+    
+    def create_median_filter_group(self):
+        """Create UI for median filter controls"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        # Kernel size parameter
+        layout.addWidget(QLabel("Kernel Size (odd number):"))
+        self.median_kernel_size_input = QLineEdit(self)
+        self.median_kernel_size_input.setPlaceholderText("Kernel Size (default: 5)")
+        layout.addWidget(self.median_kernel_size_input)
+        
+        # Description
+        desc_label = QLabel(
+            "Median filter is excellent for removing salt-and-pepper noise\n"
+            "while preserving edges. Larger kernel sizes provide more\n"
+            "smoothing but may blur important details."
+        )
+        desc_label.setWordWrap(True)
+        desc_label.setStyleSheet("color: #666; font-style: italic;")
+        layout.addWidget(desc_label)
+        
+        # Apply button
+        apply_button = QPushButton("Apply Median Filter", self)
+        apply_button.clicked.connect(self.parent().apply_median_filter)
+        layout.addWidget(apply_button)
+        
+        layout.addStretch(1)
+        return widget
+    
+    def create_nlm_denoise_group(self):
+        """Create UI for Non-Local Means denoising controls"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        # Filter strength parameter
+        layout.addWidget(QLabel("Filter Strength (h parameter):"))
+        self.nlm_h_input = QLineEdit(self)
+        self.nlm_h_input.setPlaceholderText("Strength (default: 10)")
+        layout.addWidget(self.nlm_h_input)
+        
+        # Template window size
+        layout.addWidget(QLabel("Template Window Size:"))
+        self.nlm_template_window_input = QLineEdit(self)
+        self.nlm_template_window_input.setPlaceholderText("Template Size (default: 7)")
+        layout.addWidget(self.nlm_template_window_input)
+        
+        # Search window size
+        layout.addWidget(QLabel("Search Window Size:"))
+        self.nlm_search_window_input = QLineEdit(self)
+        self.nlm_search_window_input.setPlaceholderText("Search Size (default: 21)")
+        layout.addWidget(self.nlm_search_window_input)
+        
+        # Description
+        desc_label = QLabel(
+            "Non-Local Means denoising is a high-quality algorithm that\n"
+            "preserves details better than simple blurring. Higher filter\n"
+            "strength removes more noise but can blur fine details."
+        )
+        desc_label.setWordWrap(True)
+        desc_label.setStyleSheet("color: #666; font-style: italic;")
+        layout.addWidget(desc_label)
+        
+        # Apply button
+        apply_button = QPushButton("Apply NLM Denoising", self)
+        apply_button.clicked.connect(self.parent().apply_nlm_denoise)
+        layout.addWidget(apply_button)
+        
+        layout.addStretch(1)
+        return widget
+    
+    def create_custom_kernel_group(self):
+        """Create UI for custom kernel filter controls"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        # Kernel type presets
+        layout.addWidget(QLabel("Kernel Presets:"))
+        self.kernel_preset_combo = QComboBox(self)
+        self.kernel_preset_combo.addItem("Custom (Use Matrix Below)", "custom")
+        self.kernel_preset_combo.addItem("Sharpen", "sharpen")
+        self.kernel_preset_combo.addItem("Edge Detection", "edge")
+        self.kernel_preset_combo.addItem("Emboss", "emboss")
+        self.kernel_preset_combo.addItem("Box Blur", "box")
+        self.kernel_preset_combo.currentIndexChanged.connect(self.update_kernel_preset)
+        layout.addWidget(self.kernel_preset_combo)
+        
+        # Custom kernel input
+        layout.addWidget(QLabel("Enter 3x3 Kernel Matrix (comma-separated):"))
+        
+        # 3x3 matrix as 3 rows of input fields
+        self.kernel_inputs = []
+        for i in range(3):
+            row_layout = QHBoxLayout()
+            row_inputs = []
+            for j in range(3):
+                input_field = QLineEdit(self)
+                input_field.setMaximumWidth(50)
+                row_inputs.append(input_field)
+                row_layout.addWidget(input_field)
+            self.kernel_inputs.append(row_inputs)
+            layout.addLayout(row_layout)
+        
+        # Set default sharpen kernel
+        self.update_kernel_preset(1)  # Index 1 is Sharpen
+        
+        # Description
+        desc_label = QLabel(
+            "Custom kernels allow you to create your own image filters.\n"
+            "The kernel values are applied to each pixel and its neighbors\n"
+            "to produce the filtered result."
+        )
+        desc_label.setWordWrap(True)
+        desc_label.setStyleSheet("color: #666; font-style: italic;")
+        layout.addWidget(desc_label)
+        
+        # Apply button
+        apply_button = QPushButton("Apply Custom Kernel", self)
+        apply_button.clicked.connect(self.parent().apply_custom_kernel)
+        layout.addWidget(apply_button)
+        
+        layout.addStretch(1)
+        return widget
+    
+    def update_kernel_preset(self, index):
+        """Update kernel input fields based on selected preset"""
+        preset = self.kernel_preset_combo.currentData()
+        
+        # Define preset kernels
+        kernels = {
+            "sharpen": [
+                [0, -1, 0],
+                [-1, 5, -1],
+                [0, -1, 0]
+            ],
+            "edge": [
+                [-1, -1, -1],
+                [-1, 8, -1],
+                [-1, -1, -1]
+            ],
+            "emboss": [
+                [-2, -1, 0],
+                [-1, 1, 1],
+                [0, 1, 2]
+            ],
+            "box": [
+                [1/9, 1/9, 1/9],
+                [1/9, 1/9, 1/9],
+                [1/9, 1/9, 1/9]
+            ]
+        }
+        
+        # If custom is selected, don't change anything
+        if preset == "custom":
+            return
+            
+        # Update input fields with preset values
+        kernel = kernels.get(preset)
+        if kernel:
+            for i in range(3):
+                for j in range(3):
+                    self.kernel_inputs[i][j].setText(str(kernel[i][j]))

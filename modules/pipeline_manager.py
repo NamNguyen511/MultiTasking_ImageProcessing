@@ -11,7 +11,9 @@ logger = logging.getLogger(__name__)
 # Import existing processing functions from modules
 from modules.basic_operations import resize_image, rotate_image, crop_image, flip_image
 from modules.color_processing import hue_saturation_adjustment, color_balance_adjustment
-from modules.filtering import blur_images, canny_detect_edges, morphological_filters
+from modules.filtering import (blur_images, canny_detect_edges, morphological_filters, 
+                              bilateral_filter, median_filter, nlm_denoise, 
+                              custom_kernel_filter)
 
 class OperationError(Exception):
     """Custom exception for operation-related errors"""
@@ -188,6 +190,88 @@ class FlipOperation(Operation):
 
     def apply(self, image):
         return flip_image(image, self.flip_code)
+
+# Advanced Filter Operations for Phase 2
+class BilateralFilterOperation(Operation):
+    """Advanced edge-preserving smoothing filter operation"""
+    def __init__(self, d=9, sigma_color=75, sigma_space=75):
+        self.d = d  # Diameter of each pixel neighborhood
+        self.sigma_color = sigma_color  # Filter sigma in the color space
+        self.sigma_space = sigma_space  # Filter sigma in the coordinate space
+        
+    def apply(self, image):
+        try:
+            self.validate_image(image)
+            return bilateral_filter(image, self.d, self.sigma_color, self.sigma_space)
+        except Exception as e:
+            logger.error(f"Error in bilateral filter operation: {str(e)}")
+            raise OperationError(f"Failed to apply bilateral filter: {str(e)}")
+            
+    def __str__(self):
+        return f"Bilateral Filter (d={self.d}, color={self.sigma_color}, space={self.sigma_space})"
+
+class MedianFilterOperation(Operation):
+    """Median filter for salt-and-pepper noise removal"""
+    def __init__(self, kernel_size=5):
+        self.kernel_size = kernel_size
+        
+    def apply(self, image):
+        try:
+            self.validate_image(image)
+            # Ensure kernel size is odd
+            if self.kernel_size % 2 == 0:
+                self.kernel_size += 1
+            return median_filter(image, self.kernel_size)
+        except Exception as e:
+            logger.error(f"Error in median filter operation: {str(e)}")
+            raise OperationError(f"Failed to apply median filter: {str(e)}")
+            
+    def __str__(self):
+        return f"Median Filter (kernel size={self.kernel_size})"
+
+class NLMDenoiseOperation(Operation):
+    """Non-Local Means denoising algorithm for advanced noise removal"""
+    def __init__(self, h=10, template_window_size=7, search_window_size=21):
+        self.h = h  # Filter strength
+        self.template_window_size = template_window_size
+        self.search_window_size = search_window_size
+        
+    def apply(self, image):
+        try:
+            self.validate_image(image)
+            return nlm_denoise(
+                image, 
+                self.h, 
+                self.template_window_size, 
+                self.search_window_size
+            )
+        except Exception as e:
+            logger.error(f"Error in NLM denoise operation: {str(e)}")
+            raise OperationError(f"Failed to apply NLM denoising: {str(e)}")
+            
+    def __str__(self):
+        return f"NLM Denoising (h={self.h}, template={self.template_window_size}, search={self.search_window_size})"
+
+class CustomKernelOperation(Operation):
+    """Apply a custom filter kernel to an image"""
+    def __init__(self, kernel):
+        self.kernel = np.array(kernel, dtype=np.float32)
+        
+    def apply(self, image):
+        try:
+            self.validate_image(image)
+            return custom_kernel_filter(image, self.kernel)
+        except Exception as e:
+            logger.error(f"Error in custom kernel operation: {str(e)}")
+            raise OperationError(f"Failed to apply custom kernel: {str(e)}")
+            
+    def __str__(self):
+        # Format kernel for display, truncate if too large
+        if self.kernel.size > 9:
+            kernel_str = "custom matrix"
+        else:
+            kernel_str = str(self.kernel).replace('\n', '')
+        return f"Custom Kernel Filter ({kernel_str})"
 
 # Pipeline Manager
 class PipelineManager:
@@ -399,6 +483,14 @@ class PipelineManager:
                     op = SobelEdgeDetectionOperation(params.get('mode'))
                 elif op_type == 'GammaCorrectionOperation':
                     op = GammaCorrectionOperation(params.get('gamma'))
+                elif op_type == 'BilateralFilterOperation':
+                    op = BilateralFilterOperation(params.get('d'), params.get('sigma_color'), params.get('sigma_space'))
+                elif op_type == 'MedianFilterOperation':
+                    op = MedianFilterOperation(params.get('kernel_size'))
+                elif op_type == 'NLMDenoiseOperation':
+                    op = NLMDenoiseOperation(params.get('h'), params.get('template_window_size'), params.get('search_window_size'))
+                elif op_type == 'CustomKernelOperation':
+                    op = CustomKernelOperation(params.get('kernel'))
                 else:
                     logger.warning(f"Unknown operation type: {op_type}")
                     continue

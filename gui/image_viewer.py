@@ -238,7 +238,7 @@ class ImageViewer(QWidget):
                 Qt.SmoothTransformation
             )
             self.image_label.setPixmap(scaled_pixmap)
-            
+
     def display_image(self, image, label_type='modified'):
         """Display an image in the specified label"""
         if image is None:
@@ -253,7 +253,7 @@ class ImageViewer(QWidget):
             height, width = image.shape[:2]
             bytes_per_line = width * 3
             q_image = QImage(image.data, width, height, bytes_per_line, QImage.Format_RGB888).rgbSwapped()
-            
+
         pixmap = QPixmap.fromImage(q_image)
         
         # Store pixmaps for comparison

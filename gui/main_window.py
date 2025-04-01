@@ -25,7 +25,8 @@ from modules.pipeline_manager import  (
     PipelineManager, HueSaturationOperation,
     ColorBalanceAdjustment, ResizeOperation,
     RotateOperation, MorphOperations,
-    SobelEdgeDetectionOperation
+    SobelEdgeDetectionOperation, BilateralFilterOperation,
+    MedianFilterOperation, NLMDenoiseOperation, CustomKernelOperation
 )
 from modules.basic_operations import load_image, resize_image, rotate_image, save_image
 from modules.filtering import blur_images, canny_detect_edges, morphological_filters
@@ -698,5 +699,125 @@ class MainWindow(QMainWindow):
     def update_progress(self, value):
         """Update progress bar value"""
         self.progress_bar.setValue(value)
+        
+    # -----------------------------------
+    # 8. ADVANCED FILTER METHODS
+    # -----------------------------------
+    def apply_bilateral_filter(self):
+        """Apply bilateral filter for edge-preserving noise reduction"""
+        if not self.check_image_loaded():
+            return
+            
+        try:
+            # Get parameters from UI, or use defaults
+            d_str = self.dock_panel.bilateral_d_input.text()
+            sigma_color_str = self.dock_panel.bilateral_sigma_color_input.text()
+            sigma_space_str = self.dock_panel.bilateral_sigma_space_input.text()
+            
+            d = int(d_str) if d_str else 9
+            sigma_color = float(sigma_color_str) if sigma_color_str else 75
+            sigma_space = float(sigma_space_str) if sigma_space_str else 75
+            
+            # Create operation
+            operation = BilateralFilterOperation(d, sigma_color, sigma_space)
+            self.apply_operation_with_progress(operation)
+            
+        except ValueError as e:
+            QMessageBox.warning(self, "Warning", "Please enter valid values for bilateral filter parameters.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to apply bilateral filter: {str(e)}")
+    
+    def apply_median_filter(self):
+        """Apply median filter for noise reduction"""
+        if not self.check_image_loaded():
+            return
+            
+        try:
+            # Get kernel size from UI, or use default
+            kernel_size_str = self.dock_panel.median_kernel_size_input.text()
+            kernel_size = int(kernel_size_str) if kernel_size_str else 5
+            
+            # Ensure kernel size is odd
+            if kernel_size % 2 == 0:
+                kernel_size += 1
+                
+            # Create operation
+            operation = MedianFilterOperation(kernel_size)
+            self.apply_operation_with_progress(operation)
+            
+        except ValueError as e:
+            QMessageBox.warning(self, "Warning", "Please enter a valid kernel size (odd integer).")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to apply median filter: {str(e)}")
+    
+    def apply_nlm_denoise(self):
+        """Apply Non-Local Means denoising for high-quality noise reduction"""
+        if not self.check_image_loaded():
+            return
+            
+        try:
+            # Get parameters from UI, or use defaults
+            h_str = self.dock_panel.nlm_h_input.text()
+            template_window_str = self.dock_panel.nlm_template_window_input.text()
+            search_window_str = self.dock_panel.nlm_search_window_input.text()
+            
+            h = float(h_str) if h_str else 10
+            template_window = int(template_window_str) if template_window_str else 7
+            search_window = int(search_window_str) if search_window_str else 21
+            
+            # Show a warning for large images as NLM can be slow
+            if self.current_image.shape[0] * self.current_image.shape[1] > 1000000:  # > 1 megapixel
+                reply = QMessageBox.question(
+                    self, 
+                    "Performance Warning", 
+                    "Non-Local Means denoising can be slow on large images. Continue?",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No
+                )
+                if reply == QMessageBox.No:
+                    return
+            
+            # Create operation
+            operation = NLMDenoiseOperation(h, template_window, search_window)
+            self.apply_operation_with_progress(operation)
+            
+        except ValueError as e:
+            QMessageBox.warning(self, "Warning", "Please enter valid values for NLM denoising parameters.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to apply NLM denoising: {str(e)}")
+    
+    def apply_custom_kernel(self):
+        """Apply custom kernel filter"""
+        if not self.check_image_loaded():
+            return
+            
+        try:
+            # Build kernel from input fields
+            kernel = []
+            for i in range(3):
+                row = []
+                for j in range(3):
+                    value = self.dock_panel.kernel_inputs[i][j].text()
+                    try:
+                        # Handle fractions like "1/9"
+                        if '/' in value:
+                            num, denom = value.split('/')
+                            row.append(float(num) / float(denom))
+                        else:
+                            row.append(float(value))
+                    except:
+                        QMessageBox.warning(self, "Warning", f"Invalid value at position [{i},{j}]. Using 0.")
+                        row.append(0.0)
+                kernel.append(row)
+                
+            # Convert to numpy array
+            kernel = np.array(kernel, dtype=np.float32)
+            
+            # Create operation
+            operation = CustomKernelOperation(kernel)
+            self.apply_operation_with_progress(operation)
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to apply custom kernel: {str(e)}")
         
     
