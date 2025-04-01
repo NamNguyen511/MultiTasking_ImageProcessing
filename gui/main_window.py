@@ -75,13 +75,14 @@ class MainWindow(QMainWindow):
         history_layout.addWidget(history_label)
 
         self.operation_list = QListWidget()
-        self.operation_list.setMinimumWidth(250)
+        self.operation_list.setMinimumWidth(150)
+        self.operation_list.setMaximumWidth(250)
         self.operation_list.itemClicked.connect(self.on_operation_selected)
         history_layout.addWidget(self.operation_list)
 
         # Add panels to main layout
-        main_layout.addWidget(left_panel)
-        main_layout.addWidget(history_panel)
+        main_layout.addWidget(left_panel, 3)  # Image panel gets 3 parts of the space
+        main_layout.addWidget(history_panel, 1)  # History panel gets 1 part of the space
 
         # Create and add the dockable panel
         self.dock_panel = DockablePanel(self)
@@ -158,18 +159,15 @@ class MainWindow(QMainWindow):
     
     def zoom_in(self):
         """Zoom in the image"""
-        if self.current_image is not None and hasattr(self.image_viewer, 'zoom_factor'):
-            self.image_viewer.zoom_factor *= 1.2
-            self.image_viewer.update_zoom()
-            self.update_status_bar()
+        if self.current_image is not None:
+            self.image_viewer.zoom_in()
+            self.update_status_bar(f"Zoom: {int(self.image_viewer.zoom_factor * 100)}%")
     
     def zoom_out(self):
         """Zoom out the image"""
-        if self.current_image is not None and hasattr(self.image_viewer, 'zoom_factor'):
-            self.image_viewer.zoom_factor /= 1.2
-            self.image_viewer.zoom_factor = max(0.1, self.image_viewer.zoom_factor)  # Prevent too small zoom
-            self.image_viewer.update_zoom()
-            self.update_status_bar()
+        if self.current_image is not None:
+            self.image_viewer.zoom_out()
+            self.update_status_bar(f"Zoom: {int(self.image_viewer.zoom_factor * 100)}%")
 
 
     def create_menus_and_toolbar(self):
@@ -320,6 +318,7 @@ class MainWindow(QMainWindow):
                 self.operation_history = []
 
                 # Display the original image
+                self.image_viewer.set_image_name(file_name.split('/')[-1])  # Set image name in title bar
                 self.image_viewer.display_image(self.original_image, label_type="original")
                 self.image_viewer.display_image(self.current_image, label_type="modified")
                 self.update_status_bar("Image loaded successfully")
@@ -436,10 +435,49 @@ class MainWindow(QMainWindow):
         if not self.check_image_loaded():
             return
         
-        self.image_viewer.toggle_comparison_mode(checked)
         if checked:
-            self.update_status_bar("Comparison mode enabled - Use slider to compare images")
+            # In comparison mode, we want to show the previous operation state
+            # compared to the current state
+            current_ops = self.pipeline_manager.operations
+            if current_ops:
+                # Get the previous operation result (all operations except the last one)
+                previous_pipeline = PipelineManager()
+                previous_pipeline.set_image(self.original_image.copy())
+                
+                # Check if the most recent operation is a rotation or transformation
+                last_op = current_ops[-1]
+                is_geometric_transform = isinstance(last_op, (ResizeOperation, RotateOperation))
+                
+                # Apply all operations except the last one
+                if len(current_ops) > 1:
+                    for op in current_ops[:-1]:
+                        previous_pipeline.add_operation(op)
+                    
+                    # Display the previous operation result as "original"
+                    previous_image = previous_pipeline.current_image
+                    self.image_viewer.display_image(previous_image, label_type="original")
+                    
+                    status_msg = "Comparison mode enabled - showing previous operation vs current result"
+                    if is_geometric_transform:
+                        status_msg += " (geometric transformation)"
+                    self.update_status_bar(status_msg)
+                else:
+                    # If there's only one operation, compare with original image
+                    self.image_viewer.display_image(self.original_image, label_type="original")
+                    self.update_status_bar("Comparison mode enabled - showing original vs processed image")
+                
+                # Display current image as "modified"
+                self.image_viewer.display_image(self.current_image, label_type="modified")
+                self.image_viewer.toggle_comparison_mode(True)
+            else:
+                # If no operations, just show the original/current image
+                self.image_viewer.display_image(self.original_image, label_type="original")
+                self.image_viewer.display_image(self.current_image, label_type="modified")
+                self.image_viewer.toggle_comparison_mode(True)
+                self.update_status_bar("Comparison mode enabled - Use slider to compare images")
         else:
+            # When disabling, just show the current image
+            self.image_viewer.toggle_comparison_mode(False)
             self.update_status_bar("Comparison mode disabled")
 
     # -----------------------------------------------
@@ -500,11 +538,14 @@ class MainWindow(QMainWindow):
             self.show_progress(True, 0)
             QApplication.processEvents()  # Update UI
             
+            # Store the previous state before applying the new operation
+            previous_image = self.current_image.copy() if self.current_image is not None else None
+            
             # Remove existing operations of the same type
             self.pipeline_manager.operations = [op for op in self.pipeline_manager.operations 
                                              if not isinstance(op, operation.__class__)]
             
-            # Apply operation
+            # Apply the operation
             self.pipeline_manager.add_operation(operation)
             
             # Update progress
@@ -513,9 +554,23 @@ class MainWindow(QMainWindow):
                 QApplication.processEvents()
                 
             self.current_image = self.pipeline_manager.current_image
-            self.image_viewer.display_image(self.current_image, label_type="modified")
+            
+            # If in comparison mode, first ensure comparison is turned off, then update the images,
+            # then re-enable comparison mode
+            if hasattr(self.image_viewer, 'comparison_mode') and self.image_viewer.comparison_mode:
+                # First update both images separately
+                self.image_viewer.toggle_comparison_mode(False)
+                self.image_viewer.display_image(previous_image, label_type="original")
+                self.image_viewer.display_image(self.current_image, label_type="modified")
+                # Then turn comparison back on
+                self.image_viewer.toggle_comparison_mode(True)
+            else:
+                # Update the display
+                self.image_viewer.display_image(self.current_image, label_type="modified")
+                
+            # Update operation history and status
             self.update_operation_history()
-            self.update_status_bar()
+            self.update_status_bar(f"Applied {operation.__class__.__name__}")
             
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Operation failed: {str(e)}")
